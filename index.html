@@ -1,576 +1,675 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Calendar as CalendarIcon, 
-  Users, 
-  BarChart3, 
-  Sun, 
-  Moon, 
-  Plus, 
-  Trash2, 
-  GripVertical,
-  ChevronLeft,
-  ChevronRight,
-  Info
-} from 'lucide-react';
-
-// --- YARDIMCI FONKSİYONLAR ---
-const getInitials = (name) => {
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
-};
-
-const getDaysInMonth = (year, month) => {
-  return new Date(year, month + 1, 0).getDate();
-};
-
-const getFirstDayOfMonth = (year, month) => {
-  let day = new Date(year, month, 1).getDay();
-  return day === 0 ? 6 : day - 1; 
-};
-
-const isWeekend = (dateString) => {
-  const date = new Date(dateString);
-  const day = date.getDay();
-  return day === 0 || day === 6; // 0 Pazar, 6 Cumartesi
-};
-
-const formatDate = (year, month, day) => {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
-
-const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
-const dayNames = ["Pt", "Sl", "Ça", "Pe", "Cu", "Ct", "Pz"];
-
-// --- MOCK VERİLER ---
-const initialUsers = [
-  { id: '1', name: 'Ahmet Yılmaz', email: 'ahmet@sirket.com', role: 'admin', color: 'bg-blue-500' },
-  { id: '2', name: 'Ayşe Demir', email: 'ayse@sirket.com', role: 'user', color: 'bg-emerald-500' },
-  { id: '3', name: 'Mehmet Kaya', email: 'mehmet@sirket.com', role: 'user', color: 'bg-purple-500' },
-  { id: '4', name: 'Fatma Şahin', email: 'fatma@sirket.com', role: 'user', color: 'bg-pink-500' },
-];
-
-const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-pink-500', 'bg-amber-500', 'bg-cyan-500', 'bg-rose-500'];
-
-// YENİ EKLENEN: LocalStorage'dan veri çekme fonksiyonu
-const loadInitialState = (key, defaultValue) => {
-  try {
-    const saved = localStorage.getItem(key);
-    if (saved !== null) {
-      return JSON.parse(saved);
-    }
-  } catch (e) {
-    console.error(`Error loading ${key} from localStorage`, e);
-  }
-  return defaultValue;
-};
-
-const App = () => {
-  // --- STATE TANIMLAMALARI (LocalStorage Entegreli) ---
-  const [theme, setTheme] = useState(() => loadInitialState('shiftflow_theme', 'dark')); 
-  const [activeTab, setActiveTab] = useState('calendar');
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  
-  const [users, setUsers] = useState(() => loadInitialState('shiftflow_users', initialUsers));
-  const [assignments, setAssignments] = useState(() => loadInitialState('shiftflow_assignments', {})); 
-  const [holidays, setHolidays] = useState(() => loadInitialState('shiftflow_holidays', [])); 
-  
-  const [newUser, setNewUser] = useState({ name: '', email: '' });
-  
-  const [customShiftDays, setCustomShiftDays] = useState(() => loadInitialState('shiftflow_customShiftDays', []));
-  const [hoveredMonth, setHoveredMonth] = useState(null); 
-
-  // --- LOCALSTORAGE KAYIT (VERİ DEĞİŞTİKÇE KAYDEDER) ---
-  useEffect(() => { localStorage.setItem('shiftflow_theme', JSON.stringify(theme)); }, [theme]);
-  useEffect(() => { localStorage.setItem('shiftflow_users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('shiftflow_assignments', JSON.stringify(assignments)); }, [assignments]);
-  useEffect(() => { localStorage.setItem('shiftflow_holidays', JSON.stringify(holidays)); }, [holidays]);
-  useEffect(() => { localStorage.setItem('shiftflow_customShiftDays', JSON.stringify(customShiftDays)); }, [customShiftDays]);
-
-  // --- TEMA KONTROLÜ ---
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
-
-  // --- SÜRÜKLE BIRAK (DRAG & DROP) ---
-  const handleDragStart = (e, userId) => {
-    e.dataTransfer.setData('userId', userId);
-    const avatarEl = e.currentTarget.querySelector('.drag-avatar');
-    if (avatarEl) {
-      e.dataTransfer.setDragImage(avatarEl, 16, 16);
-    }
-  };
-
-  const handleDragEnd = () => {
-    // Sürükleme işlemi herhangi bir şekilde biterse büyümeyi sıfırla
-    setHoveredMonth(null);
-  };
-
-  const handleDrop = (e, dateString) => {
-    e.preventDefault();
-    setHoveredMonth(null); // Sürükleme bitince ay büyütecini sıfırla
-    const userId = e.dataTransfer.getData('userId');
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gözde's Shift Flow</title>
     
-    // Hafta sonu veya manuel eklenmiş özel shift günü olmalı, tatil OLMAMALI
-    if ((!isWeekend(dateString) && !customShiftDays.includes(dateString)) || holidays.includes(dateString)) {
-      return;
-    }
-
-    setAssignments(prev => ({
-      ...prev,
-      [dateString]: userId
-    }));
-  };
-
-  const handleDragOver = (e, dateString) => {
-    e.preventDefault();
-  };
-
-  // --- HÜCRE ETKİLEŞİMLERİ ---
-  const handleCellClick = (dateString) => {
-    if (assignments[dateString]) {
-      // Eğer atanmış biri varsa, atamayı kaldır
-      setAssignments(prev => {
-        const newAssigns = { ...prev };
-        delete newAssigns[dateString];
-        return newAssigns;
-      });
-    } else if (isWeekend(dateString)) {
-      // Hafta sonu ise: Tatil durumunu değiştir
-      setHolidays(prev => {
-        if (prev.includes(dateString)) return prev.filter(d => d !== dateString);
-        return [...prev, dateString];
-      });
-    } else {
-      // Hafta içi ise: Özel shift günü durumunu değiştir (Gri günü shift gününe çevir/geri al)
-      setCustomShiftDays(prev => {
-        if (prev.includes(dateString)) return prev.filter(d => d !== dateString);
-        return [...prev, dateString];
-      });
-    }
-  };
-
-  // --- KULLANICI YÖNETİMİ ---
-  const handleAddUser = (e) => {
-    e.preventDefault();
-    if (newUser.name && newUser.email) {
-      const color = colors[users.length % colors.length];
-      setUsers([...users, { ...newUser, id: Date.now().toString(), role: 'user', color }]);
-      setNewUser({ name: '', email: '' });
-    }
-  };
-
-  const removeUser = (id) => {
-    setUsers(users.filter(u => u.id !== id));
-    const newAssignments = { ...assignments };
-    Object.keys(newAssignments).forEach(date => {
-      if (newAssignments[date] === id) {
-        delete newAssignments[date];
-      }
-    });
-    setAssignments(newAssignments);
-  };
-
-  // --- İSTATİSTİKLER ---
-  const getStats = useMemo(() => {
-    // Tüm kullanıcıların yıl içindeki aylık dağılımı
-    return users.map(user => {
-      const monthlyData = Array(12).fill(0);
-      let yearTotal = 0;
-      let allTimeTotal = 0;
-
-      Object.entries(assignments).forEach(([date, userId]) => {
-        if (userId === user.id) {
-          allTimeTotal++;
-          const [aYear, aMonth] = date.split('-');
-          if (parseInt(aYear) === currentYear) {
-            monthlyData[parseInt(aMonth) - 1]++;
-            yearTotal++;
-          }
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind Config for Custom Colors/Fonts if needed -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
         }
-      });
+    </script>
+    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-      return {
-        ...user,
-        monthlyData,
-        yearTotal,
-        allTimeTotal
-      };
-    });
-  }, [users, assignments, currentYear]);
-
-  // --- RENDER BİLEŞENLERİ ---
-
-  const renderMiniMonth = (monthIndex) => {
-    const daysInMonth = getDaysInMonth(currentYear, monthIndex);
-    const firstDay = getFirstDayOfMonth(currentYear, monthIndex);
-    const days = [];
-
-    // Boş başlangıç günleri
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${monthIndex}-${i}`} className="w-full aspect-square rounded-md opacity-0"></div>);
-    }
-
-    // Gerçek günler
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateString = formatDate(currentYear, monthIndex, day);
-      const isDayOff = isWeekend(dateString);
-      const isHoliday = holidays.includes(dateString);
-      const assignedUserId = assignments[dateString];
-      const assignedUser = users.find(u => u.id === assignedUserId);
-      const isToday = formatDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()) === dateString;
-
-      // Stil Kararları
-      let cellStyle = "w-full aspect-square rounded-md flex items-center justify-center text-[10px] sm:text-xs font-medium transition-all select-none ";
-      let content = day;
-      let titleTooltip = `${day} ${monthNames[monthIndex]}`;
-
-      const isCustomShift = customShiftDays.includes(dateString);
-      const isAssignable = isDayOff || isCustomShift;
-
-      if (!isAssignable) {
-        // Normal Hafta İçi (Tıklayarak Özel Shift Günü yapılabilir)
-        cellStyle += "bg-gray-100/50 dark:bg-gray-800/30 text-gray-400 dark:text-gray-600 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700/50 hover:scale-105";
-        titleTooltip += " (Hafta İçi) - Shift gününe çevirmek için tıkla";
-      } else {
-        // Atama Yapılabilir Günler (Hafta Sonu veya Özel Shift Günü)
-        if (assignedUser) {
-          cellStyle += `${assignedUser.color} text-white shadow-sm hover:opacity-80 cursor-pointer transform hover:scale-105`;
-          content = getInitials(assignedUser.name);
-          titleTooltip += `: ${assignedUser.name} (Atandı) - İptal için tıkla`;
-        } else if (isHoliday && isDayOff) {
-          cellStyle += "bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 cursor-pointer hover:bg-orange-200 dark:hover:bg-orange-500/30";
-          titleTooltip += " (Tatil) - Tatili iptal etmek için tıkla";
-        } else {
-          // Boş Hafta Sonu veya Özel Shift Günü (İkisi de aynı beyaz stile sahip)
-          cellStyle += "bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 cursor-pointer hover:shadow-inner";
-          titleTooltip += isCustomShift 
-            ? " (Özel Shift Günü) - Kişi sürükle veya iptal için tıkla" 
-            : " (Boş H.Sonu) - Kişi sürükle veya tatil yapmak için tıkla";
-        }
-      }
-
-      if (isToday) {
-        cellStyle += " ring-2 ring-indigo-500 dark:ring-indigo-400 ring-offset-1 dark:ring-offset-slate-900";
-      }
-
-      days.push(
-        <div 
-          key={dateString}
-          onDrop={(e) => handleDrop(e, dateString)}
-          onDragOver={(e) => handleDragOver(e, dateString)}
-          onClick={() => handleCellClick(dateString)}
-          className={cellStyle}
-          title={titleTooltip}
-        >
-          {content}
-        </div>
-      );
-    }
-
-    let containerClass = "p-4 rounded-2xl flex flex-col transition-all duration-500 ease-in-out ";
-    if (hoveredMonth !== null) {
-      if (hoveredMonth === monthIndex) {
-        // Hedef ay: Büyüt (scale-150 = 1.5x), odakla, gölge ve parlama ver
-        containerClass += "bg-white dark:bg-slate-800 scale-150 z-50 shadow-2xl ring-4 ring-indigo-500 origin-center";
-      } else {
-        // Diğer aylar: Küçült, soluklaştır ve bulanıklaştır
-        containerClass += "bg-white/50 dark:bg-slate-900/30 scale-90 opacity-30 blur-[2px] z-0 border border-gray-100 dark:border-slate-800";
-      }
-    } else {
-      // Normal durum
-      containerClass += "bg-white dark:bg-slate-900/50 scale-100 z-0 border border-gray-100 dark:border-slate-800 shadow-sm";
-    }
-
-    return (
-      <div 
-        key={monthIndex} 
-        onDragOver={(e) => { e.preventDefault(); setHoveredMonth(monthIndex); }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setHoveredMonth(null);
-        }}
-        onDrop={(e) => { e.preventDefault(); setHoveredMonth(null); }}
-        className={containerClass}
-      >
-        <h3 className="text-sm font-bold text-gray-800 dark:text-slate-200 mb-3 ml-1">{monthNames[monthIndex]}</h3>
-        <div className="grid grid-cols-7 gap-1 mb-2">
-          {dayNames.map((day, idx) => (
-            <div key={day} className={`text-center text-[10px] font-semibold ${idx >= 5 ? 'text-indigo-500 dark:text-indigo-400' : 'text-gray-400 dark:text-slate-500'}`}>
-              {day}
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1 flex-1">
-          {days}
-        </div>
-      </div>
-    );
-  };
-
-  const renderYearlyCalendar = () => (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentYear(currentYear - 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
-            <ChevronLeft size={20} />
-          </button>
-          <h2 className="text-2xl font-black text-gray-800 dark:text-white tracking-tight">{currentYear}</h2>
-          <button onClick={() => setCurrentYear(currentYear + 1)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
-            <ChevronRight size={20} />
-          </button>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-slate-400 hidden md:flex">
-          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-indigo-500"></div> Dolu</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600"></div> Boş (H.Sonu)</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-orange-100 dark:bg-orange-500/20 border border-orange-200 dark:border-orange-500/30"></div> Tatil</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
-        {Array.from({ length: 12 }).map((_, i) => renderMiniMonth(i))}
-      </div>
-    </div>
-  );
-
-  const renderStats = () => (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
-      <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
-        <BarChart3 className="text-indigo-500" />
-        {currentYear} Çalışma İstatistikleri
-      </h2>
-
-      <div className="overflow-x-auto custom-scrollbar pb-4">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr>
-              <th className="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-600 dark:text-slate-400">Kullanıcı</th>
-              {monthNames.map(m => (
-                <th key={m} className="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-600 dark:text-slate-400 text-center">{m.substring(0,3)}</th>
-              ))}
-              <th className="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-bold text-indigo-600 dark:text-indigo-400 text-center bg-indigo-50/50 dark:bg-indigo-900/10">Yıl Toplam</th>
-              <th className="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-bold text-emerald-600 dark:text-emerald-400 text-center bg-emerald-50/50 dark:bg-emerald-900/10">Genel Toplam</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-            {getStats.sort((a,b) => b.yearTotal - a.yearTotal).map(user => (
-              <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
-                <td className="p-3 font-medium text-gray-800 dark:text-slate-200 flex items-center gap-2 whitespace-nowrap">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white ${user.color}`}>
-                    {getInitials(user.name)}
-                  </div>
-                  {user.name}
-                </td>
-                {user.monthlyData.map((count, i) => (
-                  <td key={i} className="p-3 text-center text-sm">
-                    {count > 0 ? (
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold">
-                        {count}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300 dark:text-slate-600">-</span>
-                    )}
-                  </td>
-                ))}
-                <td className="p-3 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10">
-                  {user.yearTotal}
-                </td>
-                <td className="p-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/10">
-                  {user.allTimeTotal}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderUsers = () => (
-    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
-      <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
-        <Users className="text-indigo-500" />
-        Kullanıcı Yönetimi
-      </h2>
-
-      <form onSubmit={handleAddUser} className="mb-8 p-5 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-4">Yeni Kullanıcı Ekle</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input 
-            type="text" 
-            placeholder="Ad Soyad" 
-            value={newUser.name}
-            onChange={e => setNewUser({...newUser, name: e.target.value})}
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-gray-400"
-            required
-          />
-          <input 
-            type="email" 
-            placeholder="E-posta" 
-            value={newUser.email}
-            onChange={e => setNewUser({...newUser, email: e.target.value})}
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-gray-400"
-            required
-          />
-        </div>
-        <button type="submit" className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-sm">
-          <Plus size={18} /> Kullanıcı Ekle
-        </button>
-      </form>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {users.map(user => (
-          <div key={user.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-800/80 hover:shadow-md transition-all group">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0 shadow-sm ${user.color}`}>
-                {getInitials(user.name)}
-              </div>
-              <div className="truncate">
-                <div className="font-medium text-gray-800 dark:text-slate-200 truncate">{user.name}</div>
-                <div className="text-xs text-gray-500 dark:text-slate-400 truncate">{user.email}</div>
-              </div>
-            </div>
-            {user.role !== 'admin' && (
-              <button 
-                onClick={() => removeUser(user.id)} 
-                className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                title="Kullanıcıyı Sil"
-              >
-                <Trash2 size={18} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className={`min-h-screen font-sans selection:bg-indigo-500/30 ${theme === 'dark' ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
-        
-        {/* SOL PANEL (Kullanıcılar & Araçlar) */}
-        <div className="w-full md:w-72 lg:w-80 flex-shrink-0 flex flex-col gap-6">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col gap-2 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-            <div className="flex justify-between items-center relative z-10">
-              <h1 className="text-2xl font-black bg-gradient-to-br from-indigo-500 to-purple-600 bg-clip-text text-transparent tracking-tight">Gözde's Shift Flow</h1>
-              <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-500 dark:text-slate-400 transition-colors">
-                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-              </button>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-slate-400 relative z-10">Yıllık Nöbet Yönetim Sistemi</p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-sm font-bold text-gray-800 dark:text-slate-200 uppercase tracking-wider">Ekip Üyeleri</h3>
-              <div className="group relative">
-                <Info size={14} className="text-gray-400 cursor-help" />
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
-                  Kişiyi tutup sağdaki takvimde boş bir hafta sonuna sürükleyin.
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 min-h-[300px]">
-              {/* Sürüklenebilir Ekip Üyeleri */}
-              <div>
-                <h4 className="text-[10px] font-bold text-gray-400 dark:text-slate-500 mb-2 uppercase tracking-wider">Sürüklenebilir Üyeler</h4>
-                <div className="space-y-2">
-                  {users.map(user => (
-                    <div 
-                      key={user.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, user.id)}
-                      onDragEnd={handleDragEnd}
-                      className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700 cursor-grab active:cursor-grabbing hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all group"
-                    >
-                      <GripVertical size={16} className="text-gray-400 dark:text-slate-500 group-hover:text-indigo-500 transition-colors" />
-                      <div className={`drag-avatar w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-sm ${user.color}`}>
-                        {getInitials(user.name)}
-                      </div>
-                      <div className="truncate flex-1">
-                        <div className="font-medium text-sm text-gray-700 dark:text-slate-200 truncate">{user.name}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Hızlı İstatistikler */}
-              <div>
-                <h4 className="text-[10px] font-bold text-gray-400 dark:text-slate-500 mb-2 uppercase tracking-wider">İstatistikler (Toplam Shift)</h4>
-                <div className="space-y-2">
-                  {getStats.sort((a,b) => b.allTimeTotal - a.allTimeTotal).map(user => (
-                    <div key={`stat-${user.id}`} className="flex items-center justify-between p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${user.color}`}></div>
-                        <span className="text-xs font-medium text-gray-700 dark:text-slate-300">{user.name}</span>
-                      </div>
-                      <span className="text-[11px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded">
-                        {user.allTimeTotal} kez
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 text-xs text-gray-500 dark:text-slate-400 space-y-2">
-              <p>📌 <strong>Atama:</strong> Kişiyi hafta sonuna sürükle.</p>
-              <p>📌 <strong>Silme:</strong> Atanmış güne tıkla.</p>
-              <p>📌 <strong>Tatil:</strong> Boş güne tıkla.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* SAĞ PANEL (Ana İçerik - Sekmeler) */}
-        <div className="flex-1 flex flex-col gap-6 min-w-0">
-          {/* Sekme Menüsü */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-1.5 shadow-sm border border-gray-100 dark:border-slate-800 flex gap-1 overflow-x-auto custom-scrollbar">
-            <button 
-              onClick={() => setActiveTab('calendar')}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'calendar' ? 'bg-indigo-500 text-white shadow-md' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
-            >
-              <CalendarIcon size={18} /> Yıllık Takvim
-            </button>
-            <button 
-              onClick={() => setActiveTab('stats')}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'stats' ? 'bg-indigo-500 text-white shadow-md' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
-            >
-              <BarChart3 size={18} /> İstatistikler
-            </button>
-            <button 
-              onClick={() => setActiveTab('users')}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-indigo-500 text-white shadow-md' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
-            >
-              <Users size={18} /> Kullanıcı Yönetimi
-            </button>
-          </div>
-
-          {/* Aktif Sekme İçeriği */}
-          <div className="flex-1">
-            {activeTab === 'calendar' && renderYearlyCalendar()}
-            {activeTab === 'stats' && renderStats()}
-            {activeTab === 'users' && renderUsers()}
-          </div>
-        </div>
-      </div>
-      
-      {/* Özel Scrollbar Stilleri İçin */}
-      <style dangerouslySetInnerHTML={{__html: `
+    <style>
         .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #334155; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #475569; }
-      `}} />
-    </div>
-  );
-};
+        
+        /* Drag Elementi içindeki textlerin drag olaylarını engellemesi için */
+        .day-cell > * { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 min-h-screen font-sans selection:bg-indigo-500/30 transition-colors duration-200">
 
-export default App;
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
+        
+        <!-- SOL PANEL (Kullanıcılar & Araçlar) -->
+        <div class="w-full md:w-72 lg:w-80 flex-shrink-0 flex flex-col gap-6">
+            <div class="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col gap-2 shadow-sm relative overflow-hidden transition-colors duration-200">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 dark:bg-indigo-500/20 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+                <div class="flex justify-between items-center relative z-10">
+                    <h1 class="text-2xl font-black bg-gradient-to-br from-indigo-500 to-purple-600 bg-clip-text text-transparent tracking-tight">Gözde's Shift Flow</h1>
+                    <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-500 dark:text-slate-400 transition-colors">
+                        <i data-lucide="moon" id="theme-icon" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-slate-400 relative z-10">Yıllık Nöbet Yönetim Sistemi</p>
+            </div>
+
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col flex-1 transition-colors duration-200">
+                <div class="flex items-center gap-2 mb-4">
+                    <h3 class="text-sm font-bold text-gray-800 dark:text-slate-200 uppercase tracking-wider">Ekip Üyeleri</h3>
+                    <div class="group relative">
+                        <i data-lucide="info" class="w-[14px] h-[14px] text-gray-400 cursor-help"></i>
+                        <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                            Kişiyi tutup sağdaki takvimde boş bir hafta sonuna sürükleyin.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6 min-h-[300px]">
+                    <!-- Sürüklenebilir Ekip Üyeleri (JS ile Doldurulacak) -->
+                    <div>
+                        <h4 class="text-[10px] font-bold text-gray-400 dark:text-slate-500 mb-2 uppercase tracking-wider">Sürüklenebilir Üyeler</h4>
+                        <div id="draggable-users-list" class="space-y-2"></div>
+                    </div>
+
+                    <!-- Hızlı İstatistikler (JS ile Doldurulacak) -->
+                    <div>
+                        <h4 class="text-[10px] font-bold text-gray-400 dark:text-slate-500 mb-2 uppercase tracking-wider">İstatistikler (Toplam Shift)</h4>
+                        <div id="quick-stats-list" class="space-y-2"></div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 text-xs text-gray-500 dark:text-slate-400 space-y-2">
+                    <p>📌 <strong>Atama:</strong> Kişiyi hafta sonuna sürükle.</p>
+                    <p>📌 <strong>Silme:</strong> Atanmış güne tıkla.</p>
+                    <p>📌 <strong>Tatil/Shift:</strong> Boş güne tıkla.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SAĞ PANEL (Ana İçerik - Sekmeler) -->
+        <div class="flex-1 flex flex-col gap-6 min-w-0">
+            <!-- Sekme Menüsü -->
+            <div id="tab-menu" class="bg-white dark:bg-slate-900 rounded-2xl p-1.5 shadow-sm border border-gray-100 dark:border-slate-800 flex gap-1 overflow-x-auto custom-scrollbar transition-colors duration-200">
+                <button data-tab="calendar" class="tab-btn flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap bg-indigo-500 text-white shadow-md">
+                    <i data-lucide="calendar" class="w-[18px] h-[18px]"></i> Yıllık Takvim
+                </button>
+                <button data-tab="stats" class="tab-btn flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800">
+                    <i data-lucide="bar-chart-3" class="w-[18px] h-[18px]"></i> İstatistikler
+                </button>
+                <button data-tab="users" class="tab-btn flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800">
+                    <i data-lucide="users" class="w-[18px] h-[18px]"></i> Kullanıcı Yönetimi
+                </button>
+            </div>
+
+            <!-- İçerik Alanları -->
+            <div class="flex-1 relative">
+                
+                <!-- TAKVİM GÖRÜNÜMÜ -->
+                <div id="view-calendar" class="flex flex-col gap-6">
+                    <div class="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-200">
+                        <div class="flex items-center gap-4">
+                            <button id="btn-prev-year" class="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
+                                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                            </button>
+                            <h2 id="current-year-display" class="text-2xl font-black text-gray-800 dark:text-white tracking-tight">2026</h2>
+                            <button id="btn-next-year" class="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-600 dark:text-slate-400">
+                                <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-slate-400 hidden md:flex">
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded bg-indigo-500"></div> Dolu</div>
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600"></div> Boş/Shift</div>
+                            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded bg-orange-100 dark:bg-orange-500/20 border border-orange-200 dark:border-orange-500/30"></div> Tatil</div>
+                        </div>
+                    </div>
+
+                    <div id="calendar-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6 relative">
+                        <!-- Aylar buraya JS ile eklenecek -->
+                    </div>
+                </div>
+
+                <!-- İSTATİSTİKLER GÖRÜNÜMÜ -->
+                <div id="view-stats" class="hidden bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors duration-200">
+                    <h2 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="w-6 h-6 text-indigo-500"></i>
+                        <span id="stats-year-title"></span> Çalışma İstatistikleri
+                    </h2>
+
+                    <div class="overflow-x-auto custom-scrollbar pb-4">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr id="stats-table-header">
+                                    <!-- JS ile Doldurulacak -->
+                                </tr>
+                            </thead>
+                            <tbody id="stats-table-body" class="divide-y divide-gray-100 dark:divide-slate-800">
+                                <!-- JS ile Doldurulacak -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- KULLANICI GÖRÜNÜMÜ -->
+                <div id="view-users" class="hidden bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 transition-colors duration-200">
+                    <h2 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
+                        <i data-lucide="users" class="w-6 h-6 text-indigo-500"></i>
+                        Kullanıcı Yönetimi
+                    </h2>
+
+                    <form id="add-user-form" class="mb-8 p-5 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700">
+                        <h3 class="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-4">Yeni Kullanıcı Ekle</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="text" id="new-user-name" placeholder="Ad Soyad" class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-gray-400" required />
+                            <input type="email" id="new-user-email" placeholder="E-posta" class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-gray-400" required />
+                        </div>
+                        <button type="submit" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-sm">
+                            <i data-lucide="plus" class="w-[18px] h-[18px]"></i> Kullanıcı Ekle
+                        </button>
+                    </form>
+
+                    <div id="users-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- JS ile Doldurulacak -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT KODLARI -->
+    <script>
+        // --- YARDIMCI FONKSİYONLAR ---
+        const getInitials = (name) => {
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        };
+
+        const getDaysInMonth = (year, month) => {
+            return new Date(year, month + 1, 0).getDate();
+        };
+
+        const getFirstDayOfMonth = (year, month) => {
+            let day = new Date(year, month, 1).getDay();
+            return day === 0 ? 6 : day - 1; 
+        };
+
+        const isWeekend = (dateString) => {
+            const date = new Date(dateString);
+            const day = date.getDay();
+            return day === 0 || day === 6; // 0 Pazar, 6 Cumartesi
+        };
+
+        const formatDate = (year, month, day) => {
+            return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        };
+
+        const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+        const dayNames = ["Pt", "Sl", "Ça", "Pe", "Cu", "Ct", "Pz"];
+        const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-pink-500', 'bg-amber-500', 'bg-cyan-500', 'bg-rose-500'];
+
+        const initialUsers = [
+            { id: '1', name: 'Ahmet Yılmaz', email: 'ahmet@sirket.com', role: 'admin', color: 'bg-blue-500' },
+            { id: '2', name: 'Ayşe Demir', email: 'ayse@sirket.com', role: 'user', color: 'bg-emerald-500' },
+            { id: '3', name: 'Mehmet Kaya', email: 'mehmet@sirket.com', role: 'user', color: 'bg-purple-500' },
+            { id: '4', name: 'Fatma Şahin', email: 'fatma@sirket.com', role: 'user', color: 'bg-pink-500' },
+        ];
+
+        // --- LOCAL STORAGE YÖNETİMİ ---
+        const loadState = (key, defaultValue) => {
+            try {
+                const saved = localStorage.getItem(key);
+                if (saved !== null) return JSON.parse(saved);
+            } catch (e) {
+                console.error(`Error loading ${key}`, e);
+            }
+            return defaultValue;
+        };
+
+        const saveState = (key, value) => {
+            localStorage.setItem(key, JSON.stringify(value));
+        };
+
+        // --- GLOBAL STATE ---
+        let state = {
+            theme: loadState('shiftflow_theme', 'dark'),
+            activeTab: 'calendar',
+            currentYear: new Date().getFullYear(),
+            users: loadState('shiftflow_users', initialUsers),
+            assignments: loadState('shiftflow_assignments', {}),
+            holidays: loadState('shiftflow_holidays', []),
+            customShiftDays: loadState('shiftflow_customShiftDays', []),
+            hoveredMonth: null,
+            draggedUserId: null
+        };
+
+        // State güncelleme ve render tetikleyici
+        function setState(updates) {
+            const keysToSave = ['theme', 'users', 'assignments', 'holidays', 'customShiftDays'];
+            
+            for (let key in updates) {
+                state[key] = updates[key];
+                if (keysToSave.includes(key)) {
+                    saveState(`shiftflow_${key}`, state[key]);
+                }
+            }
+            
+            renderAll();
+        }
+
+        // --- İSTATİSTİK HESAPLAMA ---
+        function getStatsData() {
+            return state.users.map(user => {
+                const monthlyData = Array(12).fill(0);
+                let yearTotal = 0;
+                let allTimeTotal = 0;
+
+                Object.entries(state.assignments).forEach(([date, userId]) => {
+                    if (userId === user.id) {
+                        allTimeTotal++;
+                        const [aYear, aMonth] = date.split('-');
+                        if (parseInt(aYear) === state.currentYear) {
+                            monthlyData[parseInt(aMonth) - 1]++;
+                            yearTotal++;
+                        }
+                    }
+                });
+
+                return { ...user, monthlyData, yearTotal, allTimeTotal };
+            });
+        }
+
+        // --- RENDER FONKSİYONLARI ---
+        
+        function renderTheme() {
+            if (state.theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
+            }
+            lucide.createIcons();
+        }
+
+        function renderTabs() {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                const tab = btn.dataset.tab;
+                if (tab === state.activeTab) {
+                    btn.className = `tab-btn flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap bg-indigo-500 text-white shadow-md`;
+                } else {
+                    btn.className = `tab-btn flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800`;
+                }
+            });
+
+            document.getElementById('view-calendar').classList.toggle('hidden', state.activeTab !== 'calendar');
+            document.getElementById('view-stats').classList.toggle('hidden', state.activeTab !== 'stats');
+            document.getElementById('view-users').classList.toggle('hidden', state.activeTab !== 'users');
+            
+            if(state.activeTab === 'calendar') document.getElementById('view-calendar').classList.add('flex');
+            else document.getElementById('view-calendar').classList.remove('flex');
+        }
+
+        function renderSidebar() {
+            const draggableContainer = document.getElementById('draggable-users-list');
+            const statsContainer = document.getElementById('quick-stats-list');
+            const statsData = getStatsData().sort((a,b) => b.allTimeTotal - a.allTimeTotal);
+
+            // Draggable Users
+            draggableContainer.innerHTML = state.users.map(user => `
+                <div 
+                    draggable="true"
+                    data-userid="${user.id}"
+                    class="draggable-user flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700 cursor-grab active:cursor-grabbing hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all group"
+                >
+                    <i data-lucide="grip-vertical" class="w-4 h-4 text-gray-400 dark:text-slate-500 group-hover:text-indigo-500 transition-colors"></i>
+                    <div class="drag-avatar w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-sm ${user.color}">
+                        ${getInitials(user.name)}
+                    </div>
+                    <div class="truncate flex-1">
+                        <div class="font-medium text-sm text-gray-700 dark:text-slate-200 truncate">${user.name}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Quick Stats
+            statsContainer.innerHTML = statsData.map(user => `
+                <div class="flex items-center justify-between p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700/50 shadow-sm">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2.5 h-2.5 rounded-full ${user.color}"></div>
+                        <span class="text-xs font-medium text-gray-700 dark:text-slate-300">${user.name}</span>
+                    </div>
+                    <span class="text-[11px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded">
+                        ${user.allTimeTotal} kez
+                    </span>
+                </div>
+            `).join('');
+            
+            lucide.createIcons();
+            attachDragListeners();
+        }
+
+        function renderCalendarGrid() {
+            document.getElementById('current-year-display').innerText = state.currentYear;
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+
+            const todayStr = formatDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+            for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+                const daysInMonth = getDaysInMonth(state.currentYear, monthIndex);
+                const firstDay = getFirstDayOfMonth(state.currentYear, monthIndex);
+                let daysHtml = '';
+
+                // Boş günler
+                for (let i = 0; i < firstDay; i++) {
+                    daysHtml += `<div class="w-full aspect-square rounded-md opacity-0"></div>`;
+                }
+
+                // Gerçek günler
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateString = formatDate(state.currentYear, monthIndex, day);
+                    const isDayOff = isWeekend(dateString);
+                    const isHoliday = state.holidays.includes(dateString);
+                    const assignedUserId = state.assignments[dateString];
+                    const assignedUser = state.users.find(u => u.id === assignedUserId);
+                    const isToday = todayStr === dateString;
+                    const isCustomShift = state.customShiftDays.includes(dateString);
+                    const isAssignable = isDayOff || isCustomShift;
+
+                    let cellStyle = "day-cell w-full aspect-square rounded-md flex items-center justify-center text-[10px] sm:text-xs font-medium transition-all select-none ";
+                    let content = day;
+                    let titleTooltip = `${day} ${monthNames[monthIndex]}`;
+
+                    if (!isAssignable) {
+                        cellStyle += "bg-gray-100/50 dark:bg-gray-800/30 text-gray-400 dark:text-gray-600 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700/50 hover:scale-105";
+                        titleTooltip += " (Hafta İçi) - Shift gününe çevirmek için tıkla";
+                    } else {
+                        if (assignedUser) {
+                            cellStyle += `${assignedUser.color} text-white shadow-sm hover:opacity-80 cursor-pointer transform hover:scale-105`;
+                            content = getInitials(assignedUser.name);
+                            titleTooltip += `: ${assignedUser.name} (Atandı) - İptal için tıkla`;
+                        } else if (isHoliday && isDayOff) {
+                            cellStyle += "bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 cursor-pointer hover:bg-orange-200 dark:hover:bg-orange-500/30";
+                            titleTooltip += " (Tatil) - Tatili iptal etmek için tıkla";
+                        } else {
+                            cellStyle += "bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 cursor-pointer hover:shadow-inner";
+                            titleTooltip += isCustomShift 
+                                ? " (Özel Shift Günü) - Kişi sürükle veya iptal için tıkla" 
+                                : " (Boş H.Sonu) - Kişi sürükle veya tatil yapmak için tıkla";
+                        }
+                    }
+
+                    if (isToday) {
+                        cellStyle += " ring-2 ring-indigo-500 dark:ring-indigo-400 ring-offset-1 dark:ring-offset-slate-900";
+                    }
+
+                    daysHtml += `<div data-date="${dateString}" class="${cellStyle}" title="${titleTooltip}">${content}</div>`;
+                }
+
+                // Month Container Style Handling based on Zoom
+                let containerClass = "month-container p-4 rounded-2xl flex flex-col transition-all duration-500 ease-in-out ";
+                if (state.hoveredMonth !== null) {
+                    if (state.hoveredMonth === monthIndex) {
+                        containerClass += "bg-white dark:bg-slate-800 scale-150 z-50 shadow-2xl ring-4 ring-indigo-500 origin-center";
+                    } else {
+                        containerClass += "bg-white/50 dark:bg-slate-900/30 scale-90 opacity-30 blur-[2px] z-0 border border-gray-100 dark:border-slate-800";
+                    }
+                } else {
+                    containerClass += "bg-white dark:bg-slate-900/50 scale-100 z-0 border border-gray-100 dark:border-slate-800 shadow-sm";
+                }
+
+                const dayNamesHtml = dayNames.map((d, idx) => 
+                    `<div class="text-center text-[10px] font-semibold ${idx >= 5 ? 'text-indigo-500 dark:text-indigo-400' : 'text-gray-400 dark:text-slate-500'}">${d}</div>`
+                ).join('');
+
+                grid.innerHTML += `
+                    <div data-monthindex="${monthIndex}" class="${containerClass}">
+                        <h3 class="text-sm font-bold text-gray-800 dark:text-slate-200 mb-3 ml-1">${monthNames[monthIndex]}</h3>
+                        <div class="grid grid-cols-7 gap-1 mb-2">${dayNamesHtml}</div>
+                        <div class="grid grid-cols-7 gap-1 flex-1">${daysHtml}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Sadece ayın zoom durumunu güncellemek için tüm DOM'u baştan çizmeden class'ları değiştirir (Performans için)
+        function updateMonthZoomClasses() {
+            document.querySelectorAll('.month-container').forEach(el => {
+                const mIndex = parseInt(el.dataset.monthindex);
+                
+                // Classları sıfırla
+                el.className = "month-container p-4 rounded-2xl flex flex-col transition-all duration-500 ease-in-out ";
+                
+                if (state.hoveredMonth !== null) {
+                    if (state.hoveredMonth === mIndex) {
+                        el.className += "bg-white dark:bg-slate-800 scale-150 z-50 shadow-2xl ring-4 ring-indigo-500 origin-center";
+                    } else {
+                        el.className += "bg-white/50 dark:bg-slate-900/30 scale-90 opacity-30 blur-[2px] z-0 border border-gray-100 dark:border-slate-800";
+                    }
+                } else {
+                    el.className += "bg-white dark:bg-slate-900/50 scale-100 z-0 border border-gray-100 dark:border-slate-800 shadow-sm";
+                }
+            });
+        }
+
+        function renderStatsView() {
+            document.getElementById('stats-year-title').innerText = state.currentYear;
+            const statsData = getStatsData().sort((a,b) => b.yearTotal - a.yearTotal);
+            
+            let headerHtml = `<th class="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-600 dark:text-slate-400">Kullanıcı</th>`;
+            monthNames.forEach(m => {
+                headerHtml += `<th class="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-600 dark:text-slate-400 text-center">${m.substring(0,3)}</th>`;
+            });
+            headerHtml += `<th class="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-bold text-indigo-600 dark:text-indigo-400 text-center bg-indigo-50/50 dark:bg-indigo-900/10">Yıl Toplam</th>`;
+            headerHtml += `<th class="p-3 border-b border-gray-200 dark:border-slate-700 text-sm font-bold text-emerald-600 dark:text-emerald-400 text-center bg-emerald-50/50 dark:bg-emerald-900/10">Genel Toplam</th>`;
+            document.getElementById('stats-table-header').innerHTML = headerHtml;
+
+            document.getElementById('stats-table-body').innerHTML = statsData.map(user => `
+                <tr class="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
+                    <td class="p-3 font-medium text-gray-800 dark:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] text-white ${user.color}">
+                            ${getInitials(user.name)}
+                        </div>
+                        ${user.name}
+                    </td>
+                    ${user.monthlyData.map(count => `
+                        <td class="p-3 text-center text-sm">
+                            ${count > 0 
+                                ? `<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold">${count}</span>` 
+                                : `<span class="text-gray-300 dark:text-slate-600">-</span>`
+                            }
+                        </td>
+                    `).join('')}
+                    <td class="p-3 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10">${user.yearTotal}</td>
+                    <td class="p-3 text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/10">${user.allTimeTotal}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderUsersView() {
+            document.getElementById('users-grid').innerHTML = state.users.map(user => `
+                <div class="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-800/80 hover:shadow-md transition-all group">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0 shadow-sm ${user.color}">
+                            ${getInitials(user.name)}
+                        </div>
+                        <div class="truncate">
+                            <div class="font-medium text-gray-800 dark:text-slate-200 truncate">${user.name}</div>
+                            <div class="text-xs text-gray-500 dark:text-slate-400 truncate">${user.email}</div>
+                        </div>
+                    </div>
+                    ${user.role !== 'admin' ? `
+                        <button onclick="deleteUser('${user.id}')" class="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100" title="Kullanıcıyı Sil">
+                            <i data-lucide="trash-2" class="w-[18px] h-[18px]"></i>
+                        </button>
+                    ` : ''}
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function renderAll() {
+            renderTheme();
+            renderTabs();
+            renderSidebar();
+            if(state.activeTab === 'calendar') renderCalendarGrid();
+            if(state.activeTab === 'stats') renderStatsView();
+            if(state.activeTab === 'users') renderUsersView();
+        }
+
+        // --- EVENT HANDLERS ---
+        
+        // Theme Toggle
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            setState({ theme: state.theme === 'light' ? 'dark' : 'light' });
+        });
+
+        // Tabs
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                setState({ activeTab: e.currentTarget.dataset.tab });
+            });
+        });
+
+        // Year Navigation
+        document.getElementById('btn-prev-year').addEventListener('click', () => setState({ currentYear: state.currentYear - 1 }));
+        document.getElementById('btn-next-year').addEventListener('click', () => setState({ currentYear: state.currentYear + 1 }));
+
+        // Cell Click (Delegated)
+        document.getElementById('calendar-grid').addEventListener('click', (e) => {
+            const cell = e.target.closest('.day-cell');
+            if (!cell) return;
+            
+            const dateString = cell.dataset.date;
+            let newAssignments = { ...state.assignments };
+            let newHolidays = [...state.holidays];
+            let newCustomShifts = [...state.customShiftDays];
+
+            if (newAssignments[dateString]) {
+                delete newAssignments[dateString];
+            } else if (isWeekend(dateString)) {
+                if (newHolidays.includes(dateString)) {
+                    newHolidays = newHolidays.filter(d => d !== dateString);
+                } else {
+                    newHolidays.push(dateString);
+                }
+            } else {
+                if (newCustomShifts.includes(dateString)) {
+                    newCustomShifts = newCustomShifts.filter(d => d !== dateString);
+                } else {
+                    newCustomShifts.push(dateString);
+                }
+            }
+
+            setState({ 
+                assignments: newAssignments, 
+                holidays: newHolidays, 
+                customShiftDays: newCustomShifts 
+            });
+        });
+
+        // Add User Form
+        document.getElementById('add-user-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const nameEl = document.getElementById('new-user-name');
+            const emailEl = document.getElementById('new-user-email');
+            
+            if (nameEl.value && emailEl.value) {
+                const color = colors[state.users.length % colors.length];
+                const newUser = {
+                    id: Date.now().toString(),
+                    name: nameEl.value,
+                    email: emailEl.value,
+                    role: 'user',
+                    color: color
+                };
+                
+                setState({ users: [...state.users, newUser] });
+                nameEl.value = '';
+                emailEl.value = '';
+            }
+        });
+
+        // Global Delete User function (called from inline onclick)
+        window.deleteUser = (id) => {
+            const newUsers = state.users.filter(u => u.id !== id);
+            const newAssignments = { ...state.assignments };
+            Object.keys(newAssignments).forEach(date => {
+                if (newAssignments[date] === id) delete newAssignments[date];
+            });
+            setState({ users: newUsers, assignments: newAssignments });
+        };
+
+        // --- DRAG & DROP LOGIC ---
+        
+        function attachDragListeners() {
+            document.querySelectorAll('.draggable-user').forEach(el => {
+                el.addEventListener('dragstart', (e) => {
+                    state.draggedUserId = el.dataset.userid;
+                    e.dataTransfer.setData('userId', el.dataset.userid);
+                    const avatarEl = el.querySelector('.drag-avatar');
+                    if(avatarEl) {
+                        e.dataTransfer.setDragImage(avatarEl, 16, 16);
+                    }
+                });
+                
+                el.addEventListener('dragend', () => {
+                    state.draggedUserId = null;
+                    state.hoveredMonth = null;
+                    updateMonthZoomClasses();
+                });
+            });
+        }
+
+        // Calendar grid drop events (Delegated)
+        const grid = document.getElementById('calendar-grid');
+        
+        grid.addEventListener('dragover', (e) => {
+            e.preventDefault(); // Necessary to allow dropping
+            const monthContainer = e.target.closest('.month-container');
+            if (monthContainer) {
+                const mIndex = parseInt(monthContainer.dataset.monthindex);
+                if (state.hoveredMonth !== mIndex) {
+                    state.hoveredMonth = mIndex;
+                    updateMonthZoomClasses();
+                }
+            }
+        });
+
+        grid.addEventListener('dragleave', (e) => {
+            // Sadece ana grid dışına çıkıyorsa sıfırla
+            if (!grid.contains(e.relatedTarget)) {
+                state.hoveredMonth = null;
+                updateMonthZoomClasses();
+            }
+        });
+
+        grid.addEventListener('drop', (e) => {
+            e.preventDefault();
+            state.hoveredMonth = null;
+            updateMonthZoomClasses();
+            
+            const cell = e.target.closest('.day-cell');
+            if (!cell || !state.draggedUserId) return;
+
+            const dateString = cell.dataset.date;
+            
+            // Atama Kuralları
+            if ((!isWeekend(dateString) && !state.customShiftDays.includes(dateString)) || state.holidays.includes(dateString)) {
+                return;
+            }
+
+            const newAssignments = { ...state.assignments, [dateString]: state.draggedUserId };
+            setState({ assignments: newAssignments });
+        });
+
+        // İLK YÜKLEME
+        document.addEventListener('DOMContentLoaded', () => {
+            renderAll();
+        });
+
+    </script>
+</body>
+</html>
