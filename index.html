@@ -39,7 +39,7 @@
         .day-cell > * { pointer-events: none; }
     </style>
 </head>
-<body class="bg-slate-50 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 min-h-screen font-sans selection:bg-indigo-500/30 transition-colors duration-200">
+<body class="bg-slate-50 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 min-h-screen font-sans selection:bg-indigo-500/30 transition-colors duration-200 relative">
 
     <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
         
@@ -81,10 +81,15 @@
                     </div>
                 </div>
 
-                <div class="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 text-xs text-gray-500 dark:text-slate-400 space-y-2">
-                    <p>📌 <strong>Atama:</strong> Kişiyi hafta sonuna sürükle.</p>
-                    <p>📌 <strong>Silme:</strong> Atanmış güne tıkla.</p>
-                    <p>📌 <strong>Tatil/Shift:</strong> Boş güne tıkla.</p>
+                <div class="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 space-y-3">
+                    <button onclick="openAutoAssignModal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm">
+                        <i data-lucide="sparkles" class="w-[18px] h-[18px]"></i> Otomatik Atama Yap
+                    </button>
+                    <div class="text-xs text-gray-500 dark:text-slate-400 space-y-1">
+                        <p>📌 <strong>Atama:</strong> Kişiyi hafta sonuna sürükle.</p>
+                        <p>📌 <strong>Silme:</strong> Atanmış güne tıkla.</p>
+                        <p>📌 <strong>Tatil/Shift:</strong> Boş güne tıkla.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -179,6 +184,44 @@
         </div>
     </div>
 
+    <!-- OTOMATİK ATAMA MODALI -->
+    <div id="auto-assign-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-opacity duration-300 opacity-0 pointer-events-none">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-slate-800 overflow-hidden transform scale-95 transition-transform duration-300" id="auto-assign-modal-content">
+            <div class="p-6">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-white mb-5 flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    </div>
+                    Otomatik Atama
+                </h2>
+                <form id="auto-assign-form" class="space-y-5">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Başlangıç Tarihi</label>
+                            <input type="date" id="auto-start-date" required class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Bitiş Tarihi</label>
+                            <input type="date" id="auto-end-date" required class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-2">Dağıtılacak Kullanıcılar</label>
+                        <div id="auto-users-list" class="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700">
+                            <!-- JS ile Doldurulacak -->
+                        </div>
+                    </div>
+                    <div class="flex gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-slate-800">
+                        <button type="button" onclick="closeAutoAssignModal()" class="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 rounded-xl font-semibold transition-colors">İptal</button>
+                        <button type="submit" class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2">
+                            <i data-lucide="check" class="w-4 h-4"></i> Atamayı Yap
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- JAVASCRIPT KODLARI -->
     <script>
         // --- YARDIMCI FONKSİYONLAR ---
@@ -203,6 +246,11 @@
 
         const formatDate = (year, month, day) => {
             return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        };
+
+        const parseDateString = (str) => {
+            const [y, m, d] = str.split('-').map(Number);
+            return new Date(y, m - 1, d);
         };
 
         const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
@@ -434,12 +482,10 @@
             }
         }
 
-        // Sadece ayın zoom durumunu güncellemek için tüm DOM'u baştan çizmeden class'ları değiştirir (Performans için)
         function updateMonthZoomClasses() {
             document.querySelectorAll('.month-container').forEach(el => {
                 const mIndex = parseInt(el.dataset.monthindex);
                 
-                // Classları sıfırla
                 el.className = "month-container p-4 rounded-2xl flex flex-col transition-all duration-500 ease-in-out ";
                 
                 if (state.hoveredMonth !== null) {
@@ -592,7 +638,6 @@
             }
         });
 
-        // Global Delete User function (called from inline onclick)
         window.deleteUser = (id) => {
             const newUsers = state.users.filter(u => u.id !== id);
             const newAssignments = { ...state.assignments };
@@ -623,11 +668,10 @@
             });
         }
 
-        // Calendar grid drop events (Delegated)
         const grid = document.getElementById('calendar-grid');
         
         grid.addEventListener('dragover', (e) => {
-            e.preventDefault(); // Necessary to allow dropping
+            e.preventDefault(); 
             const monthContainer = e.target.closest('.month-container');
             if (monthContainer) {
                 const mIndex = parseInt(monthContainer.dataset.monthindex);
@@ -639,7 +683,6 @@
         });
 
         grid.addEventListener('dragleave', (e) => {
-            // Sadece ana grid dışına çıkıyorsa sıfırla
             if (!grid.contains(e.relatedTarget)) {
                 state.hoveredMonth = null;
                 updateMonthZoomClasses();
@@ -656,13 +699,138 @@
 
             const dateString = cell.dataset.date;
             
-            // Atama Kuralları
             if ((!isWeekend(dateString) && !state.customShiftDays.includes(dateString)) || state.holidays.includes(dateString)) {
                 return;
             }
 
             const newAssignments = { ...state.assignments, [dateString]: state.draggedUserId };
             setState({ assignments: newAssignments });
+        });
+
+        // --- OTOMATİK ATAMA LOGIC ---
+        
+        const modalEl = document.getElementById('auto-assign-modal');
+        const modalContentEl = document.getElementById('auto-assign-modal-content');
+        
+        window.openAutoAssignModal = () => {
+            // Checkbox listesini doldur
+            const usersListEl = document.getElementById('auto-users-list');
+            usersListEl.innerHTML = state.users.map(user => `
+                <label class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600">
+                    <input type="checkbox" name="auto-user" value="${user.id}" class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 bg-gray-100 border-gray-300" checked>
+                    <div class="flex items-center gap-2 flex-1">
+                        <div class="w-2.5 h-2.5 rounded-full ${user.color}"></div>
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">${user.name}</span>
+                    </div>
+                </label>
+            `).join('');
+
+            // Modalı Göster (Animasyonlu)
+            modalEl.classList.remove('hidden');
+            // Timeout ile opacity ekle ki transition çalışsın
+            setTimeout(() => {
+                modalEl.classList.remove('opacity-0', 'pointer-events-none');
+                modalContentEl.classList.remove('scale-95');
+                modalContentEl.classList.add('scale-100');
+            }, 10);
+        };
+
+        window.closeAutoAssignModal = () => {
+            modalEl.classList.add('opacity-0', 'pointer-events-none');
+            modalContentEl.classList.remove('scale-100');
+            modalContentEl.classList.add('scale-95');
+            
+            setTimeout(() => {
+                modalEl.classList.add('hidden');
+            }, 300); // Transition süresi kadar bekle
+        };
+
+        document.getElementById('auto-assign-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const startDateStr = document.getElementById('auto-start-date').value;
+            const endDateStr = document.getElementById('auto-end-date').value;
+            
+            // Seçili Kullanıcıları Al
+            const selectedUserIds = Array.from(document.querySelectorAll('input[name="auto-user"]:checked')).map(cb => cb.value);
+
+            if (selectedUserIds.length === 0) {
+                alert("Lütfen en az bir kullanıcı seçin.");
+                return;
+            }
+
+            if (startDateStr > endDateStr) {
+                alert("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+                return;
+            }
+
+            // Tarih aralığındaki uygun günleri bul
+            const startObj = parseDateString(startDateStr);
+            const endObj = parseDateString(endDateStr);
+            let validDays = [];
+            
+            let currentObj = new Date(startObj);
+            while (currentObj <= endObj) {
+                const dateStr = formatDate(currentObj.getFullYear(), currentObj.getMonth(), currentObj.getDate());
+                const isDayOff = isWeekend(dateStr);
+                const isCustom = state.customShiftDays.includes(dateStr);
+                const isHoliday = state.holidays.includes(dateStr);
+
+                // Atanabilir kuralları: (Hafta sonu VEYA özel shift günü) VE tatil değil
+                if ((isDayOff || isCustom) && !isHoliday) {
+                    validDays.push(dateStr);
+                }
+                
+                currentObj.setDate(currentObj.getDate() + 1);
+            }
+
+            if (validDays.length === 0) {
+                alert("Seçtiğiniz tarih aralığında atama yapılabilecek uygun bir shift günü bulunmuyor.");
+                return;
+            }
+
+            // Mevcut toplam sayıyı göz ardı et, bu atama için herkesi 0'dan başlat
+            let userStats = selectedUserIds.map(id => ({ id, count: 0 }));
+
+            let newAssignments = { ...state.assignments };
+
+            // Her bir boş/uygun gün için en az shifte sahip ve bir önceki gün çalışmamış kişiyi bul
+            validDays.forEach(day => {
+                const dateObj = parseDateString(day);
+                
+                // Bir önceki günün tarihini bul
+                const yesterdayObj = new Date(dateObj);
+                yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+                const yesterdayStr = formatDate(yesterdayObj.getFullYear(), yesterdayObj.getMonth(), yesterdayObj.getDate());
+                
+                // Dün çalışan kişiyi tespit et (ardışık atamayı engellemek için)
+                const userYesterday = newAssignments[yesterdayStr];
+
+                // Dün çalışan kişiyi uygun adaylar listesinden çıkar
+                let eligibleUsers = userStats.filter(u => u.id !== userYesterday);
+
+                // Eğer tek bir kişi seçildiyse veya herkes elendiyse, mecbur tüm listeye geri dön
+                if (eligibleUsers.length === 0) {
+                    eligibleUsers = userStats;
+                }
+
+                // Eşitlik durumlarında hep aynı sırayla atama yapmaması için önce rastgele karıştır
+                eligibleUsers.sort(() => Math.random() - 0.5);
+
+                // Sayıya göre küçükten büyüğe sırala
+                eligibleUsers.sort((a, b) => a.count - b.count);
+                
+                const chosenUser = eligibleUsers[0]; // En az shifti olan
+                newAssignments[day] = chosenUser.id;
+                
+                // Asıl stat dizisinde o kişinin shift sayısını artır
+                const mainUserStat = userStats.find(u => u.id === chosenUser.id);
+                if(mainUserStat) mainUserStat.count++;
+            });
+
+            // State'i güncelle ve Modalı kapat
+            setState({ assignments: newAssignments });
+            closeAutoAssignModal();
         });
 
         // İLK YÜKLEME
